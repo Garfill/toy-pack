@@ -1,0 +1,21 @@
+;(function(modules){
+  function require(id) {
+  const [moduleFn, map] = modules[id]
+  const module = {
+  exports: {}
+  }
+  function _require(filePath) {
+  return require(map[filePath])
+  }
+  moduleFn(_require, module, module.exports)
+  return module.exports
+  }
+})(
+{
+  <% modules.forEach(info => { %>
+    <%- info["id"] %>: [function (require, module, exports) {
+      <%- info["code"] %>
+    }, <%- JSON.stringify(info["map"]) %>],
+  <% })  %>
+}
+)
