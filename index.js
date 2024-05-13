@@ -6,8 +6,33 @@ import ejs from 'ejs'
 import babel from '@babel/core'
 import prettier from 'prettier'
 
+import { jsonLoader } from './loader/jsonloader.js'
+import { ChangePlugin } from './plugins/change.js'
+
+// 注册事件hook
+import { SyncHook } from 'tapable';
 
 const recordMap = new Map()
+
+// 模拟webpack打包配置
+const config = {
+  modules: {
+    rules: [
+      {
+        test: /\.json$/,
+        use: jsonLoader,
+      }
+    ]
+  },
+  plugins: [
+    new ChangePlugin('dist.js')
+  ]
+}
+
+// 打包器内部触发事件 hook
+const hooks = {
+  emitFile: new SyncHook(['path'])
+}
 
 let assetsId = 0
 // 构建一个文件资源
@@ -16,11 +41,21 @@ function createAssets(filePath) {
     return recordMap.get(filePath)
   }
   // 1. 获取文件内容
-  const code = fs.readFileSync(filePath, 'utf-8')
+  let source = fs.readFileSync(filePath, 'utf-8')
+
+  // 非 js 文件，使用loader
+  const loaders = config.modules.rules
+  loaders.forEach(({ test, use }) => {
+    if (test.test(filePath)) {
+      // 传入文件内容进行转换
+      // loader 转化 返回内容代替 source，最后生成 assets
+      source = use(source)
+    }
+  })
 
   // 2. 获取对应依赖
   //   ast 获取依赖（import）的内容
-  const ast = parser.parse(code, {
+  const ast = parser.parse(source, {
     sourceType: 'unambiguous',  
   })
 
@@ -40,7 +75,7 @@ function createAssets(filePath) {
   })
 
   // 转化低版本语法
-  const  { code: transformedCode }= babel.transformFromAst(ast, code, {
+  const  { code }= babel.transformFromAst(ast, source, {
     presets: [
       ["@babel/preset-env"]
     ] 
@@ -52,7 +87,7 @@ function createAssets(filePath) {
   const asset = {
     id: assetsId++,
     path: filePath,
-    code: transformedCode, // 文件代码
+    code, // 文件代码
     deps, // 依赖路径
     map: {},
   }
@@ -87,8 +122,6 @@ function createDepsGraph() {
 
   return queue // 返回queue就是依赖图数组
 }
-const graph = createDepsGraph()
-
 
 
 // 根据 graph 构建 modules；参考bundle.js
@@ -110,10 +143,30 @@ async function build(graph) {
     parser: 'babel'
   })
 
+  // context 可以看作是 打包器内部 compiler属性
+  const pluginContext = {
+    filePath: 'bundle.js'
+  }
+  // 特定时机触发 打包器内部的事件 hook
+  hooks.emitFile.call(pluginContext)
+
   // 生成code写入文件系统
-  fs.writeFile('bundle.js', prettierCode, () => {
+  fs.writeFile(pluginContext.filePath, prettierCode, () => {
     console.log('========= bundle.js ok ========')
   })
 }
 
-build(graph)
+function initPlugins() {
+  config.plugins.forEach((plugin) => {
+    plugin.apply(hooks)
+  })
+}
+
+
+function run() {
+  initPlugins()
+  const graph = createDepsGraph()
+  build(graph)
+}
+
+run()

@@ -1,0 +1,7 @@
+{
+  "name": "pack-json",
+  "msg": {
+    "child": "need-loader"
+  },
+  "test": true
+}

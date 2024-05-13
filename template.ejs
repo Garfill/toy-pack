@@ -1,21 +1,28 @@
 ;(function(modules){
-  function require(id) {
-  const [moduleFn, map] = modules[id]
-  const module = {
-  exports: {}
-  }
-  function _require(filePath) {
+const recordMap = new Map()
+
+function require(id) {
+if (recordMap.has(id)) {
+  return recordMap.get(id)
+}
+const [moduleFn, map] = modules[id]
+const module = {
+exports: {}
+}
+function _require(filePath) {
   return require(map[filePath])
-  }
-  moduleFn(_require, module, module.exports)
-  return module.exports
-  }
+}
+recordMap.set(id, module.exports)
+moduleFn(_require, module, module.exports)
+return module.exports
+}
+require(0)
 })(
 {
-  <% modules.forEach(info => { %>
-    <%- info["id"] %>: [function (require, module, exports) {
-      <%- info["code"] %>
-    }, <%- JSON.stringify(info["map"]) %>],
-  <% })  %>
+<% modules.forEach(info => { %>
+<%- info["id"] %>: [function (require, module, exports) {
+<%- info["code"] %>
+}, <%- JSON.stringify(info["map"]) %>],
+<% })  %>
 }
 )
